@@ -1,0 +1,12 @@
+[Unit]
+Description=trader-bot paper: stops, take-profit, loss limits, circuit breaker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trader-bot
+Environment=TB_HOME=%h/trader-bot
+ExecStart=%h/trader-bot/.venv/bin/python %h/trader-bot/scripts/paper_ctl.py hourly
+Nice=10
+TimeoutStartSec=3h

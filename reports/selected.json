@@ -1,0 +1,34 @@
+{
+ "selected": "ensemble|regime",
+ "signal": "ensemble",
+ "exposure_mode": "regime",
+ "horizon": 3,
+ "model_params": {
+  "lgbm": {
+   "num_leaves": 9,
+   "learning_rate": 0.03784484628313921,
+   "min_child_samples": 158,
+   "feature_fraction": 0.4393292924814399,
+   "bagging_fraction": 0.5993218767925523,
+   "lambda_l2": 0.01642468735743751
+  },
+  "xgb": {
+   "max_depth": 4,
+   "learning_rate": 0.03375708348274609,
+   "min_child_weight": 18.312530924308994,
+   "subsample": 0.9526113843632249,
+   "colsample_bytree": 0.8810685404018247,
+   "reg_lambda": 22.87189142958384
+  },
+  "transformer": {
+   "d": 96,
+   "layers": 1,
+   "drop": 0.1375984573604082,
+   "lr": 0.00024089940289381652,
+   "L": 16,
+   "wd": 0.0006127806575546336
+  }
+ },
+ "committed_at": "2026-10-09T14:59:54.421483+00:00",
+ "wf_sharpe": 0.9034162339462408
+}

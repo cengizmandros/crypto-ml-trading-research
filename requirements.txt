@@ -1,0 +1,18 @@
+# PyTorch with CUDA 12.8 wheels: pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu128
+# (CPU-only also works, the Transformer is small; drop the extra index to get the default wheel)
+torch==2.11.0
+numpy==2.5.3
+pandas==3.0.6
+pyarrow==26.0.0
+scipy==1.18.1
+scikit-learn==1.9.1
+lightgbm==4.7.0
+xgboost==3.4.1
+optuna==5.0.0
+hmmlearn==0.3.3
+requests==2.34.2
+fastapi==0.143.0
+uvicorn==0.54.0
+plotly==7.1.0
+matplotlib==3.11.2
+pytest==9.1.1

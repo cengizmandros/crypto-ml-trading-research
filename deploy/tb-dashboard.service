@@ -1,0 +1,13 @@
+[Unit]
+Description=trader-bot dashboard (http://127.0.0.1:8050)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/trader-bot
+Environment=TB_HOME=%h/trader-bot
+ExecStart=%h/trader-bot/.venv/bin/uvicorn traderbot.dashboard:app --host 127.0.0.1 --port 8050
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

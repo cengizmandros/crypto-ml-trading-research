@@ -1,0 +1,10 @@
+[Unit]
+Description=trader-bot timer: daily
+
+[Timer]
+OnCalendar=*-*-* 00:15:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

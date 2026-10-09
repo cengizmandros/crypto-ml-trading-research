@@ -1,0 +1,12 @@
+[Unit]
+Description=trader-bot paper: update data, rebuild features, daily rebalance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trader-bot
+Environment=TB_HOME=%h/trader-bot
+ExecStart=%h/trader-bot/.venv/bin/python %h/trader-bot/scripts/paper_ctl.py daily
+Nice=10
+TimeoutStartSec=3h

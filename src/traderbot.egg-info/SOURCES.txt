@@ -1,0 +1,9 @@
+pyproject.toml
+src/traderbot/__init__.py
+src/traderbot/config.py
+src/traderbot/data.py
+src/traderbot/universe.py
+src/traderbot.egg-info/PKG-INFO
+src/traderbot.egg-info/SOURCES.txt
+src/traderbot.egg-info/dependency_links.txt
+src/traderbot.egg-info/top_level.txt

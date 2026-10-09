@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trader Bot — Paper</title>
+<script src="/plotly.min.js"></script>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --fg:#1d1d1f; --mute:#6b6b70; --line:#e4e4e0; --pos:#1a7f4b; --neg:#c0392b; --accent:#2f5fd0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141416; --card:#1d1d20; --fg:#ececec; --mute:#9a9aa0; --line:#2c2c30; --pos:#4cc38a; --neg:#ff6b5b; --accent:#7aa2ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding:18px 24px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  .badge { font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
+  .badge.warn { color:var(--neg); border-color:var(--neg); }
+  main { padding:16px 24px; display:grid; gap:16px; max-width:1300px; margin:auto; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .kpi, .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .kpi .l { color:var(--mute); font-size:12px; } .kpi .v { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .card h2 { font-size:14px; margin:0 0 8px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns:1fr; } main { padding:12px 16px; } }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:13px; }
+  th, td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--mute); font-weight:500; }
+  .scroll { overflow-x:auto; max-height:360px; overflow-y:auto; }
+  .pos { color:var(--pos); } .neg { color:var(--neg); }
+  .note { color:var(--mute); font-size:12px; }
+  tr.sel td { font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trader Bot</h1>
+  <span class="badge">PAPER TRADING — gerçek para yok</span>
+  <span class="badge" id="halted"></span>
+  <span class="note" id="updated"></span>
+</header>
+<main>
+  <div class="card" id="fundalarm" style="display:none; border-color:var(--neg)"><h2 class="neg">FUNDING ALARM</h2><pre id="fundalarmtext" style="white-space:pre-wrap;margin:0"></pre></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="card"><h2>Funding rejimi izleme (hacimde ilk 30 coin, medyan yıllık funding)</h2>
+    <div class="kpis" id="fundkpis" style="margin-bottom:8px"></div>
+    <div id="fundchart" style="height:220px"></div>
+    <p class="note">Alarm: medyan 14 gün üst üste %10'u geçerse ~/funding-arb/ALARM.txt oluşur. Sadece izleme; funding-arb paper trading kapalı.</p></div>
+  <div class="card"><h2>Paper bakiye eğrisi vs BTC al-ve-tut</h2><div id="eqchart" style="height:320px"></div></div>
+  <div class="grid2">
+    <div class="card"><h2>Açık pozisyonlar</h2><div class="scroll" id="positions"></div></div>
+    <div class="card"><h2>Son sinyaller (sıralama)</h2><div class="scroll" id="signals"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>Son işlemler</h2><div class="scroll" id="trades"></div></div>
+    <div class="card"><h2>Olaylar (risk, yeniden eğitim, hatalar)</h2><div class="scroll" id="events"></div></div>
+  </div>
+  <div class="card"><h2>Araştırma: walk-forward (örneklem dışı) bakiye eğrileri, log ölçek</h2><div id="wfchart" style="height:340px"></div>
+    <p class="note" id="wfperiod"></p></div>
+  <div class="card"><h2>Araştırma: tüm varyantlar (komisyon + slippage sonrası)</h2><div class="scroll" id="wftable"></div></div>
+  <div class="card" id="holdoutcard" style="display:none"><h2>Nihai test (dokunulmamış son dönem)</h2><div class="scroll" id="holdout"></div></div>
+</main>
+<script>
+const pct = (x, d=1) => x==null ? "–" : (100*x).toFixed(d) + "%";
+const num = (x, d=2) => x==null ? "–" : Number(x).toFixed(d);
+const cls = x => x==null ? "" : (x>=0 ? "pos" : "neg");
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function table(rows, cols) {
+  if (!rows || !rows.length) return '<p class="note">Henüz veri yok.</p>';
+  let h = '<table><tr>' + cols.map(c => `<th>${c[1]}</th>`).join('') + '</tr>';
+  for (const r of rows) h += `<tr class="${r._cls||''}">` + cols.map(c => { const v = c[2] ? c[2](r[c[0]], r) : (r[c[0]] ?? '–'); return `<td>${v}</td>`; }).join('') + '</tr>';
+  return h + '</table>';
+}
+function layout(extra={}) {
+  return Object.assign({margin:{l:50,r:10,t:10,b:30}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+    font:{color:css('--fg'), size:12}, xaxis:{gridcolor:css('--line')}, yaxis:{gridcolor:css('--line')}, legend:{orientation:'h', y:1.1}}, extra);
+}
+async function load() {
+  const p = await (await fetch('/api/paper')).json();
+  const s = p.stats || {};
+  const halted = p.state && p.state.halted === 'true';
+  document.getElementById('halted').textContent = halted ? 'DEVRE KESİCİ AKTİF' : 'sistem aktif';
+  document.getElementById('halted').className = 'badge' + (halted ? ' warn' : '');
+  document.getElementById('updated').textContent = 'güncelleme: ' + new Date().toLocaleString('tr-TR');
+  const k = [['Bakiye (USDT)', s.equity!=null ? Number(s.equity).toFixed(2) : '–'], ['Toplam getiri', pct(s.return)],
+    ['BTC aynı dönem', pct(s.btc_return)], ['Max drawdown', pct(s.max_dd)], ['Sharpe (yıllık)', num(s.sharpe)],
+    ['Gün', s.days ?? '–'], ['İşlem sayısı', s.n_trades ?? '–'], ['Ödenen maliyet', s.costs!=null ? Number(s.costs).toFixed(2) : '–']];
+  document.getElementById('kpis').innerHTML = k.map(([l,v]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
+  const e = p.equity;
+  if (e && e.ts && e.ts.length) {
+    const b0 = e.btc_px.find(x => x), e0 = e.equity[0];
+    Plotly.react('eqchart', [
+      {x:e.ts, y:e.equity, name:'Paper bakiye', line:{color:css('--accent'), width:2}},
+      {x:e.ts, y:e.btc_px.map(v => v ? e0 * v / b0 : null), name:'BTC al-ve-tut', line:{color:css('--mute'), dash:'dot'}}],
+      layout(), {displayModeBar:false, responsive:true});
+  } else document.getElementById('eqchart').innerHTML = '<p class="note">Paper trading henüz başlamadı.</p>';
+  document.getElementById('positions').innerHTML = table(p.positions, [['symbol','Varlık'],['qty','Miktar',v=>num(v,4)],['entry_px','Giriş',v=>num(v,4)],
+    ['bid','Şimdi',v=>num(v,4)],['value','Değer',v=>num(v,2)],['pnl_pct','K/Z',v=>`<span class="${cls(v)}">${pct(v)}</span>`],['stop','Stop',v=>num(v,4)],['take','TP',v=>num(v,4)]]);
+  document.getElementById('signals').innerHTML = table(p.signals, [['rank','#'],['symbol','Varlık'],['score','Skor',v=>num(v,3)],['target_w','Hedef ağırlık',v=>pct(v)]]);
+  document.getElementById('trades').innerHTML = table(p.trades, [['ts','Zaman',v=>v.replace('T',' ').slice(0,16)],['symbol','Varlık'],['side','Yön'],['notional','Tutar',v=>num(v,2)],['price','Fiyat',v=>num(v,4)],['cost','Maliyet',v=>num(v,3)],['reason','Neden']]);
+  document.getElementById('events').innerHTML = table(p.events, [['ts','Zaman',v=>v.replace('T',' ').slice(0,16)],['kind','Olay'],['detail','Detay',v=>`<span class="note">${String(v).slice(0,140)}</span>`]]);
+
+  const r = await (await fetch('/api/research')).json();
+  if (r.curves) {
+    const colors = [css('--mute'), '#b08800', css('--accent'), '#8e44ad'];
+    const names = {btc_buy_hold:'BTC al-ve-tut', ew_universe_monthly:'Eşit ağırlık evren (aylık)'};
+    const tr = Object.keys(r.curves).filter(c => c!=='x').map((c,i) => ({x:r.curves.x, y:r.curves[c], name: names[c] || c, line:{color:colors[i%4], width: c===r.selected?2.5:1.5}}));
+    Plotly.react('wfchart', tr, layout({yaxis:{type:'log', gridcolor:css('--line')}}), {displayModeBar:false, responsive:true});
+    document.getElementById('wfperiod').textContent = `Dönem: ${r.period[0]} → ${r.period[1]}. Seçilen sistem: ${r.selected}. Tüm sonuçlar komisyon + spread + slippage sonrası.`;
+  }
+  if (r.wf) {
+    const rows = Object.entries(r.wf).map(([k,v]) => Object.assign({name:k, _cls: k===r.selected?'sel':''}, v)).sort((a,b) => (b.sharpe??-9)-(a.sharpe??-9));
+    document.getElementById('wftable').innerHTML = table(rows, [['name','Strateji'],['cagr','CAGR',v=>`<span class="${cls(v)}">${pct(v)}</span>`],['sharpe','Sharpe',num],['sortino','Sortino',num],
+      ['max_dd','Max DD',v=>pct(v)],['win_rate','Kazanma',v=>pct(v,0)],['n_trades','İşlem'],['exposure','Ort. pozisyon',v=>pct(v,0)],['costs_paid_pct_of_start','Maliyet/başl.',v=>pct(v)]]);
+  }
+  if (r.holdout) {
+    document.getElementById('holdoutcard').style.display = '';
+    const rows = Object.entries(r.holdout).map(([k,v]) => Object.assign({name:k, _cls: k===r.selected?'sel':''}, v)).sort((a,b) => (b.sharpe??-9)-(a.sharpe??-9));
+    document.getElementById('holdout').innerHTML = table(rows, [['name','Strateji'],['total_return','Toplam',v=>`<span class="${cls(v)}">${pct(v)}</span>`],['cagr','CAGR',pct],['sharpe','Sharpe',num],['max_dd','Max DD',pct],['n_trades','İşlem']]);
+  }
+}
+async function loadFunding() {
+  const f = await (await fetch('/api/funding_monitor')).json();
+  const st = f.state || {};
+  document.getElementById('fundalarm').style.display = f.alarm ? '' : 'none';
+  if (f.alarm) document.getElementById('fundalarmtext').textContent = f.alarm;
+  const k = [['Son gün', st.last_day ?? '–'], ['Medyan funding (yıllık)', pct(st.last_median)],
+    ['Seri (>%10)', (st.streak ?? 0) + ' / ' + (st.streak_needed ?? 14) + ' gün'],
+    ['Durum', f.alarm ? '<span class="neg">ALARM</span>' : (st.last_error ? '<span class="neg">hata</span>' : 'normal')]];
+  document.getElementById('fundkpis').innerHTML = k.map(([l,v]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
+  if (f.available && f.rows.date.length) {
+    const x = f.rows.date;
+    Plotly.react('fundchart', [
+      {x, y: f.rows.median_apr.map(v => 100*v), name:'Medyan', line:{color:css('--accent'), width:2}},
+      {x, y: f.rows.p75_apr.map(v => 100*v), name:'%75', line:{color:css('--mute'), dash:'dot'}},
+      {x, y: x.map(() => 10), name:'Eşik %10', line:{color:css('--neg'), dash:'dash', width:1}}],
+      layout({yaxis:{ticksuffix:'%', gridcolor:css('--line')}}), {displayModeBar:false, responsive:true});
+  } else document.getElementById('fundchart').innerHTML = '<p class="note">Henüz izleme verisi yok.</p>';
+}
+load(); setInterval(load, 60000);
+loadFunding(); setInterval(loadFunding, 300000);
+</script>
+</body>
+</html>
